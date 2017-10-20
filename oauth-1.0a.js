@@ -143,18 +143,24 @@ OAuth.prototype.getParameterString = function(request, oauth_data) {
     for(var i = 0; i < base_string_data.length; i++) {
         var key = base_string_data[i].key;
         var value = base_string_data[i].value;
-        // check if the value is an array
+        // check if the value is an array or an object
         // this means that this key has multiple values
-        if (value && Array.isArray(value)){
+        if (value && value.constructor.name == 'Object') {
+            data_str += this.formatObjectToString( key, false, value );
+        } else if (value && Array.isArray(value)){
           // sort the array first
           value.sort();
 
           var valString = "";
           // serialize all values for this key: e.g. formkey=formvalue1&formkey=formvalue2
           value.forEach((function(item, i){
-            valString += key + '=' + item;
-            if (i < value.length){
-              valString += "&";
+            if (item && item.constructor.name == 'Object') {
+                valString += this.formatObjectToString( key, i, item );
+            } else {
+                valString += key + '=' + item;
+                if (i < value.length){
+                  valString += "&";
+                }
             }
           }).bind(this));
           data_str += valString;
@@ -167,6 +173,39 @@ OAuth.prototype.getParameterString = function(request, oauth_data) {
     data_str = data_str.substr(0, data_str.length - 1);
     return data_str;
 };
+
+/**
+ * Format a object to a single string
+ * @param  {String} formkey key of the object
+ * @param  {Object} entryObj the object to be formatted as string
+ * @return {String} A string with all entries serialized
+ */
+OAuth.prototype.formatObjectToString = function(formkey, arrayIndex, entryObj) {
+    var index = 0;
+    var objSize = 0;
+    for(var entryKey in entryObj) { objSize ++; }
+    
+    var formattedString = '';
+    
+    // serialize all values for this key: e.g. formkey[entrykey]=entryvalue1&formkey[entrykey]=entryvalue2
+    for(var entryKey in entryObj) {
+        entryString = formkey;
+
+        if ( arrayIndex.constructor.name === 'Number' ) {
+            entryString += '%5B' + arrayIndex + '%5D';
+        }
+
+        entryString += '%5B' + entryKey + '%5D=' + entryObj[entryKey];
+
+        if ( index < objSize ) {
+            entryString += '&'
+        }
+
+        formattedString += entryString;
+        index ++;
+    }
+    return formattedString;
+}
 
 /**
  * Create a Signing Key
@@ -265,15 +304,21 @@ OAuth.prototype.percentEncodeData = function(data) {
     for(var key in data) {
         var value = data[key];
         // check if the value is an array
-        if (value && Array.isArray(value)){
-          var newValue = [];
-          // percentEncode every value
-          value.forEach((function(val){
-            newValue.push(this.percentEncode(val));
-          }).bind(this));
-          value = newValue;
+        if (value && value.constructor.name == 'Object') {
+            value = this.percentEncodeData(value);
+        } else if (value && Array.isArray(value)){
+            var newValue = [];
+            // percentEncode every value
+            value.forEach((function(val){
+                if (val && val.constructor.name == 'Object') {
+                    newValue.push(this.percentEncodeData(val));
+                } else {
+                    newValue.push(this.percentEncode(val));
+                }
+            }).bind(this));
+            value = newValue;
         } else {
-          value = this.percentEncode(value);
+            value = this.percentEncode(value);
         }
         result[this.percentEncode(key)] = value;
     }
